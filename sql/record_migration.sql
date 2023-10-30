@@ -1,1 +1,1 @@
-INSERT INTO migrations (name) VALUES (?);
+INSERT INTO %s (name) VALUES (?);

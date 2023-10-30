@@ -32,6 +32,9 @@ var deleteMigrationSQL string
 
 var migrationsPath string
 var dbURL string
+var migrationsTableName string
+
+const DEFAULT_MIGRATIONS_TABLE = "libsql_migrations"
 
 func main() {
 	var rootCmd = &cobra.Command{
@@ -55,8 +58,9 @@ func main() {
 	}
 	upCmd.Flags().StringVarP(&migrationsPath, "path", "p", "./", "Path where the migration files are located")
 	upCmd.Flags().StringVarP(&dbURL, "url", "u", "", "The Database URL. If env DB_URL is defined then this is not needed")
-    upCmd.MarkFlagRequired("url")
-    upCmd.MarkFlagRequired("path")
+    upCmd.Flags().StringVarP(&migrationsTableName, "table", "t", DEFAULT_MIGRATIONS_TABLE,  "The migrations table name.")
+	upCmd.MarkFlagRequired("url")
+	upCmd.MarkFlagRequired("path")
 
 	var downCmd = &cobra.Command{
 		Use:   "down",
@@ -66,12 +70,13 @@ func main() {
 	}
 	downCmd.Flags().StringVarP(&migrationsPath, "path", "p", "./", "Path where the migration files are located")
 	downCmd.Flags().StringVarP(&dbURL, "url", "u", "", "The Database URL. If env DB_URL is defined then this is not needed")
-    downCmd.MarkFlagRequired("url")
-    downCmd.MarkFlagRequired("path")
+    downCmd.Flags().StringVarP(&migrationsTableName, "table", "t", DEFAULT_MIGRATIONS_TABLE,  "The migrations table name.")
+	downCmd.MarkFlagRequired("url")
+	downCmd.MarkFlagRequired("path")
 
 	rootCmd.AddCommand(generateCmd)
 	rootCmd.AddCommand(upCmd)
-    rootCmd.AddCommand(downCmd)
+	rootCmd.AddCommand(downCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
@@ -86,18 +91,18 @@ func connect() *sql.DB {
 		log.Fatalf("Error opening a connection to database: %v", err)
 		os.Exit(1)
 	}
-    return db
+	return db
 }
 
 func up(cmd *cobra.Command, args []string) {
 	db := connect()
 	defer db.Close()
 
-    err := checkMigrationTable(db)
-    if err != nil {
-        log.Fatal(err)
-        os.Exit(1)
-    }
+	err := checkMigrationTable(db)
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
 
 	files, err := os.ReadDir(migrationsPath)
 	if err != nil {
@@ -105,17 +110,17 @@ func up(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-    sort.Slice(files, func(i, j int) bool {
-        // ascending order
-        return files[i].Name() < files[j].Name()
-    })
+	sort.Slice(files, func(i, j int) bool {
+		// ascending order
+		return files[i].Name() < files[j].Name()
+	})
 
 	var suffix = "_up.sql"
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), suffix) {
 			baseName := strings.TrimSuffix(file.Name(), suffix)
 			var id int32
-			err := db.QueryRow(checkMigrationSQL, baseName).Scan(&id)
+			err := db.QueryRow(prepareSQL(checkMigrationSQL), baseName).Scan(&id)
 			if err != nil && err != sql.ErrNoRows {
 				log.Fatalf("Failed to query migrations table: %v", err)
 				os.Exit(1)
@@ -137,11 +142,11 @@ func up(cmd *cobra.Command, args []string) {
 					os.Exit(1)
 				}
 
-                _, err = db.Exec(recordMigrationSQL, baseName)
-                if err != nil {
-                    log.Fatalf("Failed to insert migration record into migrations table: %v", err)
-                    os.Exit(1)
-                }
+				_, err = db.Exec(prepareSQL(recordMigrationSQL), baseName)
+				if err != nil {
+					log.Fatalf("Failed to insert migration record into migrations table: %v", err)
+					os.Exit(1)
+				}
 			}
 		}
 	}
@@ -153,11 +158,11 @@ func down(cmd *cobra.Command, args []string) {
 	db := connect()
 	defer db.Close()
 
-    err := checkMigrationTable(db)
-    if err != nil {
-        log.Fatal(err)
-        os.Exit(1)
-    }
+	err := checkMigrationTable(db)
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
 
 	files, err := os.ReadDir(migrationsPath)
 	if err != nil {
@@ -165,23 +170,23 @@ func down(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-    sort.Slice(files, func(i, j int) bool {
-        // descending order
-        return files[i].Name() > files[j].Name()
-    })
+	sort.Slice(files, func(i, j int) bool {
+		// descending order
+		return files[i].Name() > files[j].Name()
+	})
 
-    suffix := "_down.sql"
+	suffix := "_down.sql"
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), suffix) {
 			baseName := strings.TrimSuffix(file.Name(), suffix)
 			var id int32
-			err := db.QueryRow(checkMigrationSQL, baseName).Scan(&id)
+			err := db.QueryRow(prepareSQL(checkMigrationSQL), baseName).Scan(&id)
 			if err != nil && err != sql.ErrNoRows {
 				log.Fatalf("Failed to query migrations table: %v", err)
 				os.Exit(1)
 			}
 
-            if err == nil && id > 0 {
+			if err == nil && id > 0 {
 				fmt.Printf("Resetting migration: %s\n", file.Name())
 
 				// apply migrations
@@ -196,12 +201,12 @@ func down(cmd *cobra.Command, args []string) {
 					log.Fatalf("Failed to apply migration from file %s: %v", file.Name(), err)
 					os.Exit(1)
 				}
-                _, err = db.Exec(deleteMigrationSQL, id)
-                if err != nil {
-                    log.Fatalf("Failed to remove migration record from migrations table: %v", err)
-                    os.Exit(1)
-                }
-            }
+				_, err = db.Exec(prepareSQL(deleteMigrationSQL), id)
+				if err != nil {
+					log.Fatalf("Failed to remove migration record from migrations table: %v", err)
+					os.Exit(1)
+				}
+			}
 		}
 	}
 
@@ -212,10 +217,10 @@ func generate(cmd *cobra.Command, args []string) {
 	migrationName := args[0]
 	timestamp := time.Now().UTC().Format("20060102150405")
 
-    upMigrationFile := fmt.Sprintf("%s_%s_up.sql", timestamp, migrationName)
-    downMigrationFile := fmt.Sprintf("%s_%s_down.sql", timestamp, migrationName)
-    upMigration := filepath.Join(migrationsPath, upMigrationFile)
-    downMigration := filepath.Join(migrationsPath, downMigrationFile)
+	upMigrationFile := fmt.Sprintf("%s_%s_up.sql", timestamp, migrationName)
+	downMigrationFile := fmt.Sprintf("%s_%s_down.sql", timestamp, migrationName)
+	upMigration := filepath.Join(migrationsPath, upMigrationFile)
+	downMigration := filepath.Join(migrationsPath, downMigrationFile)
 
 	upFile, err := os.Create(upMigration)
 	if err != nil {
@@ -243,23 +248,35 @@ func generate(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-    fmt.Println("Migration files:")
-    fmt.Printf("Up migration: %s\n", upMigration)
-    fmt.Printf("Down migration: %s\n", downMigration)
+	fmt.Println("Migration files:")
+	fmt.Printf("Up migration: %s\n", upMigration)
+	fmt.Printf("Down migration: %s\n", downMigration)
 }
 
 func checkMigrationTable(db *sql.DB) error {
 	// check if migrations table exists or not
-    _, err := db.Exec(checkMigrationsTableSQL)
+	rows, err := db.Exec(checkMigrationsTableSQL, migrationsTableName)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// table does not exists, create table
-			_, err = db.Exec(createMigrationsTableSQL)
-			if err != nil {
-				return fmt.Errorf("Failed to create migrations table: %v", err)
-			}
+		return fmt.Errorf("Failed to check migration table: %v", err)
+	}
+
+	count, err := rows.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("Failed to get rows affected count when checking migration table: %v", err)
+	}
+
+	if count == 0 {
+		// table does not exists, create table
+        sql := prepareSQL(createMigrationsTableSQL)
+		_, err = db.Exec(sql)
+		if err != nil {
+            return fmt.Errorf("Failed to create migration table: %v", err)
 		}
 	}
 
-    return nil
+	return nil
+}
+
+func prepareSQL(sql string) string {
+    return fmt.Sprintf(sql, migrationsTableName)
 }

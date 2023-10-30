@@ -1,1 +1,1 @@
-SELECT id FROM migrations WHERE name = ?;
+SELECT id FROM %s WHERE name = ?;

@@ -1,1 +1,1 @@
-DELETE FROM migrations WHERE id = ?;
+DELETE FROM %s WHERE id = ?;
