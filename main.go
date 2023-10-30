@@ -38,7 +38,7 @@ const DEFAULT_MIGRATIONS_TABLE = "libsql_migrations"
 
 func main() {
 	var rootCmd = &cobra.Command{
-		Use:   "migrate",
+		Use:   "libsql-migrate",
 		Short: "A CLI tool for generating migration files",
 	}
 
