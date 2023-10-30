@@ -42,6 +42,12 @@ func main() {
 		Short: "A CLI tool for generating migration files",
 	}
 
+    var versionCmd = &cobra.Command{
+        Use: "version",
+        Short: "Get version of libsql-migrate CLI",
+        Run: version,
+    }
+
 	var generateCmd = &cobra.Command{
 		Use:   "gen <name>",
 		Short: "Genereate new migration files",
@@ -77,6 +83,7 @@ func main() {
 	rootCmd.AddCommand(generateCmd)
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(downCmd)
+    rootCmd.AddCommand(versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
@@ -279,4 +286,8 @@ func checkMigrationTable(db *sql.DB) error {
 
 func prepareSQL(sql string) string {
     return fmt.Sprintf(sql, migrationsTableName)
+}
+
+func version(cmd *cobra.Command, args []string) {
+    fmt.Println("Running libsql-migrate v0.1.0")
 }
