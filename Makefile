@@ -6,3 +6,6 @@ clean:
 
 build:
 	go build -o ./build/migrate
+
+install:
+	go install
